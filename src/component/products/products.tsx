@@ -3,6 +3,7 @@
 import { useEffect, FC } from "react";
 import { useDispatch } from "react-redux";
 import { setProducts, Product } from "@/store/productSlice";
+import ProductCard from "./productCard";
 
 interface ProductsProps {
   products: Product[];
@@ -22,8 +23,10 @@ const Products: FC<ProductsProps> = ({ products }) => {
     );
   }
   return (
-    <div>
-      <pre>{JSON.stringify(products, null, 2)}</pre>
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4">
+      {products.map((product) => (
+        <ProductCard key={product.id} product={product} />
+      ))}
     </div>
   );
 };
