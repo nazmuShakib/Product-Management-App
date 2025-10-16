@@ -14,10 +14,15 @@ const Products: FC<ProductsProps> = ({ products }) => {
   useEffect(() => {
     dispatch(setProducts(products));
   }, [dispatch, products]);
-
+  if (products.length === 0) {
+    return (
+      <div className="flex justify-center items-center mt-8">
+        <span className="text-2xl">No products available.</span>
+      </div>
+    );
+  }
   return (
     <div>
-      <h1>Products</h1>
       <pre>{JSON.stringify(products, null, 2)}</pre>
     </div>
   );
