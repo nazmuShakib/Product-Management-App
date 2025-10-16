@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { cookies } from "next/headers";
 import Login from "@/component/auth/login";
+import ProviderWrapper from "@/store/providerWrapper";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -25,19 +26,21 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const cookieStore = await cookies();
-  const userEmail = cookieStore.get("userEmail")?.value;
+  const jwt = cookieStore.get("jwt")?.value;
   return (
     <html lang="en">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {userEmail ? (
-          children
-        ) : (
-          <>
-            <Login />
-          </>
-        )}
+        <ProviderWrapper>
+          {jwt && jwt.length ? (
+            children
+          ) : (
+            <>
+              <Login />
+            </>
+          )}
+        </ProviderWrapper>
       </body>
     </html>
   );

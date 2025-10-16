@@ -4,6 +4,8 @@ import { FC, useState } from "react";
 import { z, ZodError } from "zod";
 import { setCookie } from "cookies-next";
 import { useRouter } from "next/navigation";
+import { setToken } from "@/store/authSlice";
+import { useDispatch } from "react-redux";
 
 // A schema for validating the email field with an email regex
 const emailSchema = z.object({
@@ -19,6 +21,7 @@ const Login: FC = () => {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const router = useRouter();
+  const dispatch = useDispatch();
 
   // Handle input change
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -34,7 +37,7 @@ const Login: FC = () => {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
     try {
@@ -42,7 +45,22 @@ const Login: FC = () => {
       emailSchema.parse({ email });
       console.log("Valid email:", email);
 
-      setCookie("userEmail", email, { maxAge: 60 * 60 * 24 * 7 });
+      const response = await fetch("https://api.bitechx.com/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Login failed");
+      }
+
+      const data = await response.json();
+      // Assuming your API responds with: { token: "your-jwt-token" }
+      dispatch(setToken(data.token));
+      console.log(data.token);
+
+      setCookie("jwt", data.token, { maxAge: 60 * 60 * 24 * 7 });
       router.refresh();
     } catch (err: unknown) {
       if (err instanceof ZodError) {
