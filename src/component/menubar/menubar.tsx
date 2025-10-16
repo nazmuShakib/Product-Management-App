@@ -1,19 +1,33 @@
 "use client";
 import Image from "next/image";
-import { FC, ReactNode, useState } from "react";
-import { deleteCookie } from "cookies-next";
+import { FC, ReactNode, useState, useEffect } from "react";
+import { deleteCookie, getCookie } from "cookies-next";
 import { useRouter } from "next/navigation";
 import { TbLogout } from "react-icons/tb";
+import { useSelector, useDispatch } from "react-redux";
+import { RootState } from "@/store/store";
+import { setToken } from "@/store/authSlice";
+import Loading from "@/component/loading/loading";
 
 const MenuBar: FC<{ children: ReactNode }> = ({ children }) => {
   const [openLogoutPopUp, setOpenLogoutPopUp] = useState(false);
+
+  const token = useSelector((state: RootState) => state.auth.token);
+  const dispatch = useDispatch();
 
   const handleLogout = () => {
     console.log("Logging out...");
     setOpenLogoutPopUp(true);
   };
+
+  useEffect(() => {
+    dispatch(setToken(getCookie("jwt") as string));
+  }, [token]);
+
+  if (!token) return <Loading />;
+
   return (
-    <>
+    <div>
       <div className="h-16 bg-foreground/15 flex justify-between items-center p-2 sm:p-4 md:p-6 lg:p-8">
         <div className="text-foreground flex gap-2 items-center">
           <Image
@@ -39,7 +53,7 @@ const MenuBar: FC<{ children: ReactNode }> = ({ children }) => {
       {openLogoutPopUp && (
         <LogoutPopUp handleLogout={() => setOpenLogoutPopUp(false)} />
       )}
-    </>
+    </div>
   );
 };
 
