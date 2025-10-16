@@ -2,6 +2,8 @@
 
 import { FC, useState } from "react";
 import { z, ZodError } from "zod";
+import { setCookie } from "cookies-next";
+import { useRouter } from "next/navigation";
 
 // A schema for validating the email field with an email regex
 const emailSchema = z.object({
@@ -16,6 +18,7 @@ const emailSchema = z.object({
 const Login: FC = () => {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
+  const router = useRouter();
 
   // Handle input change
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -38,7 +41,9 @@ const Login: FC = () => {
       // Validate the email using Zod
       emailSchema.parse({ email });
       console.log("Valid email:", email);
-      // Proceed with login logic
+
+      setCookie("userEmail", email, { maxAge: 60 * 60 * 24 * 7 });
+      router.refresh();
     } catch (err: unknown) {
       if (err instanceof ZodError) {
         console.log(err.issues[0].message);
@@ -61,7 +66,7 @@ const Login: FC = () => {
             <input
               className={`w-full px-3 py-2 border rounded outline-none transition duration-300 ease-linear ${
                 error
-                  ? "border-[var(--color-error)] focus:ring-2 focus:ring-[var(--color-error)] focus:border-[var(--color-error)]"
+                  ? "border-error focus:ring-2 focus:ring-error focus:border-error"
                   : "border-gray-300 focus:ring-2 focus:ring-foreground focus:border-foreground"
               }`}
               type="text"
