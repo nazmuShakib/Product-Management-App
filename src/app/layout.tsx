@@ -4,6 +4,7 @@ import "./globals.css";
 import { cookies } from "next/headers";
 import Login from "@/component/auth/login";
 import ProviderWrapper from "@/store/providerWrapper";
+import MenuBar from "@/component/menubar/menubar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,7 +35,7 @@ export default async function RootLayout({
       >
         <ProviderWrapper>
           {jwt && jwt.length ? (
-            children
+            <MenuBar>{children}</MenuBar>
           ) : (
             <>
               <Login />
