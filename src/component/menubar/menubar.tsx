@@ -1,8 +1,9 @@
 "use client";
 import Image from "next/image";
+import Link from "next/link";
 import { FC, ReactNode, useState, useEffect } from "react";
 import { deleteCookie, getCookie } from "cookies-next";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { TbLogout } from "react-icons/tb";
 import { useSelector, useDispatch } from "react-redux";
 import { RootState } from "@/store/store";
@@ -17,6 +18,7 @@ const MenuBar: FC<{ children: ReactNode }> = ({ children }) => {
   const token = useSelector((state: RootState) => state.auth.token);
   const dispatch = useDispatch();
   const router = useRouter();
+  const pathname = usePathname() ?? "/";
 
   const handleLogout = () => {
     console.log("Logging out...");
@@ -46,7 +48,10 @@ const MenuBar: FC<{ children: ReactNode }> = ({ children }) => {
   }, [lastScrollY]);
 
   if (!token) return <Loading />;
-
+  const menus = [
+    { label: "Products", href: "/products" },
+    { label: "Categories", href: "/categories" },
+  ];
   return (
     <>
       <div
@@ -55,18 +60,40 @@ const MenuBar: FC<{ children: ReactNode }> = ({ children }) => {
         }`}
       >
         <div className="h-16 bg-menubar flex justify-between items-center p-2 sm:p-4 md:p-6 lg:p-8">
-          <div className="text-foreground flex gap-2 items-center">
-            <Image
-              src="/product-management.png"
-              alt="Logo"
-              width={40}
-              height={30}
-              className="filter invert"
-            />
-            <div className="max-w-16">
-              <p className="text-sm">Product Management</p>
+          <div className="text-foreground flex gap-4 items-center">
+            <div className="flex items-center gap-2">
+              <Image
+                src="/product-management.png"
+                alt="Logo"
+                width={40}
+                height={30}
+                className="filter invert"
+              />
+              <div className="max-w-16">
+                <p className="text-sm">Product Management</p>
+              </div>
             </div>
           </div>
+          <nav className="hidden md:flex gap-2 items-center justify-center">
+            {menus.map((m) => {
+              const active = pathname === m.href;
+              return (
+                <Link
+                  key={m.href}
+                  href={m.href}
+                  className={`px-3 py-1 rounded text-sm transition ${
+                    active
+                      ? "bg-foreground text-background font-semibold"
+                      : "text-foreground/80 hover:bg-foreground/10"
+                  }`}
+                  aria-current={active ? "page" : undefined}
+                >
+                  {m.label}
+                </Link>
+              );
+            })}
+          </nav>
+
           <div
             onClick={handleLogout}
             className="hover:cursor-pointer flex flex-col items-center text-error-message"
