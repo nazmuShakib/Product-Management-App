@@ -29,7 +29,7 @@ const ProductCard: FC<ProductCardProps> = ({ product }) => {
           )}
         </div>
         <div className="p-4">
-          <h2 className="text-xl font-semibold">{product.name}</h2>
+          <h2 className="text-xl font-semibold truncate">{product.name}</h2>
           <p className="text-lg mt-2">${product.price}</p>
           <button className="mt-4 w-full bg-success text-white py-2 rounded hover:bg-success/85 transition-colors duration-300">
             Buy Now
