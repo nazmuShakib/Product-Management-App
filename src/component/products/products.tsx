@@ -8,6 +8,7 @@ import {
   setLimit,
   setCurrentPage,
   Product,
+  setProducts,
 } from "@/store/productSlice";
 import { RootState } from "@/store/store";
 import ProductCard from "./productCard";
@@ -39,7 +40,7 @@ const sanitizeProductsImages = (items: Product[]): Product[] =>
     ) as unknown as Product["images"],
   }));
 
-const Products: FC<ProductsProps> = ({ products }) => {
+const Products: FC<ProductsProps> = ({ products: p }) => {
   const dispatch = useDispatch();
   const token = useSelector((state: RootState) => state.auth.token);
   const pages = useSelector((state: RootState) => state.products.pages);
@@ -51,23 +52,13 @@ const Products: FC<ProductsProps> = ({ products }) => {
     (state: RootState) => state.products.currentPage ?? 1
   );
   const limit = useSelector((state: RootState) => state.products.limit ?? 8);
-
+  const products = useSelector((state: RootState) => state.products.items);
   const [currentProducts, setCurrentProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [localTotal, setLocalTotal] = useState<number>(
-    storedTotal ?? products.length
-  );
+  const [localTotal, setLocalTotal] = useState<number>(p.length);
 
   const [nameQuery, setNameQuery] = useState<string>("");
-
-  useEffect(() => {
-    const key = `p1-l${limit}`;
-    const seeded = sanitizeProductsImages(products).slice(0, limit);
-    dispatch(setPage({ key, items: seeded }));
-    setCurrentProducts(seeded);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, products, limit]);
 
   useEffect(() => {
     const key = `p${currentPage}-l${limit}`;
@@ -98,6 +89,7 @@ const Products: FC<ProductsProps> = ({ products }) => {
 
         const items: Product[] =
           data?.products ?? data?.items ?? (Array.isArray(data) ? data : []);
+        dispatch(setProducts(items));
         const sanitizedItems = sanitizeProductsImages(items);
 
         const serverTotal =
@@ -124,14 +116,13 @@ const Products: FC<ProductsProps> = ({ products }) => {
 
     fetchPage();
     return () => controller.abort();
-  }, [currentPage, limit, token, pages, dispatch]);
+  }, [products, currentPage, limit, token, pages, dispatch]);
 
   const computedTotal = storedTotal ?? localTotal;
 
   const allCachedItems = useMemo(() => {
     const pageValues = pages ? Object.values(pages).flat() : [];
     if (pageValues.length === 0) return sanitizeProductsImages(products);
-    // de-duplicate by id/slug
     const map = new Map<string, Product>();
     for (const p of pageValues) {
       const key = p.id ?? p.slug ?? JSON.stringify(p);

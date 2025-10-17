@@ -4,7 +4,13 @@ import { FC, useEffect, useState } from "react";
 import { GrFormPrevious, GrFormNext } from "react-icons/gr";
 import { useDispatch, useSelector } from "react-redux";
 import { useRouter } from "next/navigation";
-import { setSingleProduct, type Product } from "@/store/productSlice";
+import {
+  setSingleProduct,
+  type Product,
+  setPage,
+  setTotalCount,
+  setProducts,
+} from "@/store/productSlice";
 import { RootState } from "@/store/store";
 
 interface SingleProductProps {
@@ -12,7 +18,6 @@ interface SingleProductProps {
   slug: string;
 }
 
-/** Validate image URL: only accept absolute http(s) and common image extensions */
 const isValidImageUrl = (url?: string) => {
   if (!url || typeof url !== "string") return false;
   if (url.includes("localhost")) return false;
@@ -31,6 +36,12 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
   const router = useRouter();
   const token = useSelector((state: RootState) => state.auth.token);
 
+  const pages = useSelector((state: RootState) => state.products.pages);
+  const totalCount = useSelector(
+    (state: RootState) => state.products.totalCount
+  );
+  const itemsList = useSelector((state: RootState) => state.products.items);
+
   const cachedProduct = useSelector(
     (state: any) => state.products?.singleProducts?.[slug]
   );
@@ -44,7 +55,6 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
     if (singleproduct) {
       dispatch(setSingleProduct(singleproduct));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [singleproduct]);
 
   const allImages = localProduct.images || [];
@@ -137,7 +147,6 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
       }
 
       const updated = await res.json();
-      // server may return updated object; merge with existing fallback
       const merged: Product = {
         ...localProduct,
         ...(updated ?? {}),
@@ -164,7 +173,7 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
     setIsDeleteModalOpen(true);
   };
 
-  // perform delete after confirmation
+  // perform delete after confirmation and update redux cache
   const confirmDelete = async () => {
     setFormError(null);
     if (!localProduct.id) {
@@ -193,7 +202,41 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
         throw new Error(text || `Server responded ${res.status}`);
       }
 
-      // success => navigate to /products
+      try {
+        const removeKey = String(localProduct.id ?? localProduct.slug ?? "");
+
+        // update pages
+        if (pages && typeof pages === "object") {
+          Object.keys(pages).forEach((key) => {
+            const items = (pages as Record<string, Product[]>)[key] || [];
+            const filtered = items.filter(
+              (p) => String(p.id ?? p.slug) !== removeKey
+            );
+            if (filtered.length !== items.length) {
+              dispatch(setPage({ key, items: filtered }));
+            }
+          });
+        }
+
+        if (Array.isArray(itemsList) && itemsList.length > 0) {
+          const newItems = itemsList.filter(
+            (p) => String(p.id ?? p.slug) !== removeKey
+          );
+          if (newItems.length !== itemsList.length) {
+            dispatch(setProducts(newItems));
+          }
+        }
+
+        if (typeof totalCount === "number") {
+          const newTotal = Math.max(0, totalCount - 1);
+          dispatch(setTotalCount(newTotal));
+        }
+
+        dispatch(setSingleProduct({} as Product));
+      } catch (cacheErr) {
+        console.error("Failed to update redux cache after delete:", cacheErr);
+      }
+
       router.push("/products");
     } catch (err: any) {
       console.error(err);
