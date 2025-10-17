@@ -17,7 +17,10 @@ async function getProducts(token: string | undefined) {
 export default async function Page() {
   const cookieStore = await cookies();
   const jwt = cookieStore.get("jwt")?.value;
-  const products = await getProducts(jwt);
-
-  return <ProductsClient products={products} />;
+  try {
+    const products = await getProducts(jwt);
+    return <ProductsClient products={products} />;
+  } catch (err) {
+    return <div>Error loading products</div>;
+  }
 }

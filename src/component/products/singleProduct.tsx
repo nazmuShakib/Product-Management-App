@@ -28,6 +28,20 @@ interface SingleProductProps {
   slug: string;
 }
 
+/** Validate image URL: only accept absolute http(s) and common image extensions */
+const isValidImageUrl = (url?: string) => {
+  if (!url || typeof url !== "string") return false;
+  if (url.includes("localhost")) return false;
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+  } catch {
+    return false;
+  }
+  const pathname = url.split("?")[0].split("#")[0];
+  return /\.(jpe?g|png|gif|webp|avif|svg)$/i.test(pathname);
+};
+
 const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
   const dispatch = useDispatch();
 
@@ -40,19 +54,21 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
     if (singleproduct) {
       dispatch(setSingleProduct(singleproduct));
     }
-  }, [dispatch, product]);
+  }, [dispatch, singleproduct]);
+
+  const allImages = product.images || [];
+  const images = allImages.filter(isValidImageUrl);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const images = product.images || [];
 
   const handlePrev = () => {
     setCurrentIndex((prevIndex) =>
-      prevIndex === 0 ? images.length - 1 : prevIndex - 1
+      images.length ? (prevIndex === 0 ? images.length - 1 : prevIndex - 1) : 0
     );
   };
 
   const handleNext = () => {
     setCurrentIndex((prevIndex) =>
-      prevIndex === images.length - 1 ? 0 : prevIndex + 1
+      images.length ? (prevIndex === images.length - 1 ? 0 : prevIndex + 1) : 0
     );
   };
 
@@ -78,18 +94,21 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
             <button
               onClick={handlePrev}
               className="absolute top-1/2 left-2 transform -translate-y-1/2 bg-gray-800 text-white rounded-full w-10 h-10 flex items-center justify-center hover:bg-gray-700 transition"
+              aria-label="Previous image"
             >
               <GrFormPrevious />
             </button>
             <button
               onClick={handleNext}
               className="absolute top-1/2 right-2 transform -translate-y-1/2 bg-gray-800 text-white rounded-full w-10 h-10 flex items-center justify-center hover:bg-gray-700 transition"
+              aria-label="Next image"
             >
               <GrFormNext />
             </button>
           </>
         )}
       </div>
+
       <div className="flex mb-4 flex-row items-center justify-between sm:justify-around gap-4">
         <div className="flex flex-col text-lg">
           <span className="text-sm">Price</span>
@@ -97,9 +116,10 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
         </div>
         <div className="flex flex-col text-lg">
           <span className="text-sm">Category</span>
-          <span className="font-semibold">{product.category.name}</span>
+          <span className="font-semibold">{product.category?.name}</span>
         </div>
       </div>
+
       <p className="text-base mb-6">{product.description}</p>
     </div>
   );

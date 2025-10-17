@@ -34,7 +34,11 @@ export default async function ProductPage({
   const { slug } = await Promise.resolve(params);
   const cookieStore = await cookies();
   const jwt = cookieStore.get("jwt")?.value;
-  const product = await getSingleProduct(jwt, slug);
-
-  return <SingleProduct product={product} slug={slug} />;
+  console.log(slug, "here");
+  try {
+    const product = await getSingleProduct(jwt, slug);
+    return <SingleProduct product={product} slug={slug} />;
+  } catch (err) {
+    return <div>Error</div>;
+  }
 }
