@@ -223,7 +223,10 @@ const Products: FC<ProductsProps> = ({ products }) => {
           ))
         ) : displayedProducts.length > 0 ? (
           displayedProducts.map((product) => (
-            <ProductCard key={product.id ?? product.slug} product={product} />
+            <ProductCard
+              key={product.id ?? product.slug}
+              product={product as unknown as any}
+            />
           ))
         ) : (
           <div className="col-span-full text-center py-12">

@@ -1,12 +1,13 @@
 import { FC } from "react";
 import Link from "next/link";
+import { Category } from "@/store/categorySlice";
 
 interface Product {
   name: string;
   price: number;
   slug: string;
   images?: string[] | null;
-  category?: object;
+  category: Category;
 }
 
 interface ProductCardProps {

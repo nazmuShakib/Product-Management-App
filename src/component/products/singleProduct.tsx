@@ -3,25 +3,9 @@
 import { FC, useEffect, useState } from "react";
 import { GrFormPrevious, GrFormNext } from "react-icons/gr";
 import { useDispatch, useSelector } from "react-redux";
-import { setSingleProduct } from "@/store/productSlice";
-
-interface Category {
-  id: string;
-  name: string;
-  image: string;
-  description: string | null;
-}
-interface Product {
-  id: string;
-  name: string;
-  description: string;
-  images: string[];
-  price: number;
-  slug: string;
-  category: Category;
-  createdAt: string;
-  updatedAt: string;
-}
+import { useRouter } from "next/navigation";
+import { setSingleProduct, type Product } from "@/store/productSlice";
+import { RootState } from "@/store/store";
 
 interface SingleProductProps {
   product: Product;
@@ -44,21 +28,44 @@ const isValidImageUrl = (url?: string) => {
 
 const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
   const dispatch = useDispatch();
+  const router = useRouter();
+  const token = useSelector((state: RootState) => state.auth.token);
 
   const cachedProduct = useSelector(
     (state: any) => state.products?.singleProducts?.[slug]
   );
   const singleproduct = cachedProduct || product;
 
+  // local copy so UI updates after edit
+  const [localProduct, setLocalProduct] = useState<Product>(singleproduct);
+
   useEffect(() => {
+    setLocalProduct(singleproduct);
     if (singleproduct) {
       dispatch(setSingleProduct(singleproduct));
     }
-  }, [dispatch, singleproduct]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [singleproduct]);
 
-  const allImages = product.images || [];
+  const allImages = localProduct.images || [];
   const images = allImages.filter(isValidImageUrl);
   const [currentIndex, setCurrentIndex] = useState(0);
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editName, setEditName] = useState(localProduct.name ?? "");
+  const [editDescription, setEditDescription] = useState(
+    localProduct.description ?? ""
+  );
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setEditName(localProduct.name ?? "");
+    setEditDescription(localProduct.description ?? "");
+  }, [localProduct]);
 
   const handlePrev = () => {
     setCurrentIndex((prevIndex) =>
@@ -72,15 +79,166 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
     );
   };
 
+  const openModal = () => {
+    setFormError(null);
+    setSuccessMessage(null);
+    setEditName(localProduct.name ?? "");
+    setEditDescription(localProduct.description ?? "");
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setIsSubmitting(false);
+    setFormError(null);
+  };
+
+  const onSave = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    setFormError(null);
+    setSuccessMessage(null);
+
+    const name = String(editName ?? "").trim();
+    const description = String(editDescription ?? "").trim();
+
+    if (!name) {
+      setFormError("Name is required");
+      return;
+    }
+    if (!description) {
+      setFormError("Description is required");
+      return;
+    }
+    if (!localProduct.id) {
+      setFormError("Missing product id");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(
+        `https://api.bitechx.com/products/${encodeURIComponent(
+          String(localProduct.id)
+        )}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ name, description }),
+          cache: "no-store",
+        }
+      );
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `Server responded ${res.status}`);
+      }
+
+      const updated = await res.json();
+      // server may return updated object; merge with existing fallback
+      const merged: Product = {
+        ...localProduct,
+        ...(updated ?? {}),
+        name,
+        description,
+      };
+      setLocalProduct(merged);
+      dispatch(setSingleProduct(merged));
+      setSuccessMessage("Product updated");
+      setTimeout(() => {
+        closeModal();
+      }, 900);
+    } catch (err: any) {
+      console.error(err);
+      setFormError(err?.message ?? "Failed to update product");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // open delete confirmation modal
+  const onDeleteClick = () => {
+    setFormError(null);
+    setIsDeleteModalOpen(true);
+  };
+
+  // perform delete after confirmation
+  const confirmDelete = async () => {
+    setFormError(null);
+    if (!localProduct.id) {
+      setFormError("Missing product id");
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const res = await fetch(
+        `https://api.bitechx.com/products/${encodeURIComponent(
+          String(localProduct.id)
+        )}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          cache: "no-store",
+        }
+      );
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `Server responded ${res.status}`);
+      }
+
+      // success => navigate to /products
+      router.push("/products");
+    } catch (err: any) {
+      console.error(err);
+      setFormError(err?.message ?? "Failed to delete product");
+    } finally {
+      setIsDeleting(false);
+      setIsDeleteModalOpen(false);
+    }
+  };
+
+  const cancelDelete = () => {
+    setIsDeleteModalOpen(false);
+    setFormError(null);
+  };
+
   return (
     <div className="max-w-3xl mx-auto p-8">
-      <h1 className="text-4xl font-bold mb-4">{product.name}</h1>
+      <div className="flex items-center justify-end gap-2">
+        <button
+          onClick={openModal}
+          className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+          aria-label="Edit product"
+          disabled={isSubmitting || isDeleting}
+        >
+          Edit
+        </button>
+
+        <button
+          onClick={onDeleteClick}
+          className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition"
+          aria-label="Delete product"
+          disabled={isDeleting || isSubmitting}
+        >
+          {isDeleting ? "Deleting..." : "Delete"}
+        </button>
+      </div>
+      <div className="flex items-center justify-center my-4">
+        <h1 className="text-4xl font-bold">{localProduct.name}</h1>
+      </div>
 
       <div className="relative mb-6">
         {images && images.length > 0 ? (
           <img
             src={images[currentIndex]}
-            alt={`${product.name} image ${currentIndex + 1}`}
+            alt={`${localProduct.name} image ${currentIndex + 1}`}
             className="w-full h-80 object-contain rounded shadow-lg"
           />
         ) : (
@@ -112,15 +270,117 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
       <div className="flex mb-4 flex-row items-center justify-between sm:justify-around gap-4">
         <div className="flex flex-col text-lg">
           <span className="text-sm">Price</span>
-          <span className="font-semibold">${product.price}</span>
+          <span className="font-semibold">${localProduct.price}</span>
         </div>
         <div className="flex flex-col text-lg">
           <span className="text-sm">Category</span>
-          <span className="font-semibold">{product.category?.name}</span>
+          <span className="font-semibold">
+            {(localProduct.category as { name?: string } | undefined)?.name}
+          </span>
         </div>
       </div>
 
-      <p className="text-base mb-6">{product.description}</p>
+      <p className="text-base mb-6">{localProduct.description}</p>
+
+      {/* Edit Modal */}
+      {isModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <form
+            onSubmit={(e) => onSave(e)}
+            className="w-full max-w-lg bg-background rounded shadow-xl p-6 border-1"
+          >
+            <h2 className="text-lg font-semibold mb-4">Edit Product</h2>
+
+            {formError && <div className="mb-2 text-red-600">{formError}</div>}
+            {successMessage && (
+              <div className="mb-2 text-green-600">{successMessage}</div>
+            )}
+
+            <label className="block mb-3">
+              <span className="text-sm font-medium">Name</span>
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="mt-1 block w-full px-3 py-2 border rounded outline-0 focus:ring-2 focus:ring-foreground transition duration-200"
+                aria-invalid={!editName.trim()}
+              />
+            </label>
+
+            <label className="block mb-4">
+              <span className="text-sm font-medium">Description</span>
+              <textarea
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                className="mt-1 block w-full px-3 py-2 border rounded outline-0 focus:ring-2 focus:ring-foreground transition duration-200"
+                rows={4}
+                aria-invalid={!editDescription.trim()}
+              />
+            </label>
+
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={closeModal}
+                className="px-4 py-2 bg-gray-500 rounded"
+                disabled={isSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="px-4 py-2 bg-green-600 text-white rounded disabled:opacity-60"
+              >
+                {isSubmitting ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {isDeleteModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="w-full max-w-sm bg-background/70 rounded shadow-lg p-5">
+            <h3 className="text-lg font-semibold mb-3">Confirm Delete</h3>
+            <p className="text-sm mb-4">
+              Are you sure you want to delete "
+              <span className="font-medium">{localProduct.name}</span>"? This
+              action cannot be undone.
+            </p>
+
+            {formError && <div className="mb-2 text-red-600">{formError}</div>}
+
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={cancelDelete}
+                className="px-4 py-2 bg-gray-500 rounded"
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                className="px-4 py-2 bg-red-600 text-white rounded disabled:opacity-60"
+                disabled={isDeleting}
+              >
+                {isDeleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
