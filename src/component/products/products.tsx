@@ -1,6 +1,6 @@
 "use client";
 
-import { FC, useEffect, useState } from "react";
+import { FC, useEffect, useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   setPage,
@@ -12,12 +12,12 @@ import {
 import { RootState } from "@/store/store";
 import ProductCard from "./productCard";
 import { MdOutlineSkipPrevious, MdOutlineSkipNext } from "react-icons/md";
+import { useRouter } from "next/navigation";
 
 interface ProductsProps {
   products: Product[];
 }
 
-/** Validate image URL: only accept absolute http(s) and common image extensions */
 const isValidImageUrl = (url?: string) => {
   if (!url || typeof url !== "string") return false;
   if (url.includes("localhost")) return false;
@@ -27,7 +27,8 @@ const isValidImageUrl = (url?: string) => {
   } catch {
     return false;
   }
-  return true;
+  const pathname = url.split("?")[0].split("#")[0];
+  return /\.(jpe?g|png|gif|webp|avif|svg)$/i.test(pathname);
 };
 
 const sanitizeProductsImages = (items: Product[]): Product[] =>
@@ -58,13 +59,13 @@ const Products: FC<ProductsProps> = ({ products }) => {
     storedTotal ?? products.length
   );
 
-  // Seed Redux cache for page 1 with sanitized images (runs when products or limit change)
+  const [nameQuery, setNameQuery] = useState<string>("");
+
   useEffect(() => {
     const key = `p1-l${limit}`;
     const seeded = sanitizeProductsImages(products).slice(0, limit);
     dispatch(setPage({ key, items: seeded }));
     setCurrentProducts(seeded);
-    // if server provided total elsewhere, it should be dispatched by the caller
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, products, limit]);
 
@@ -126,7 +127,48 @@ const Products: FC<ProductsProps> = ({ products }) => {
   }, [currentPage, limit, token, pages, dispatch]);
 
   const computedTotal = storedTotal ?? localTotal;
-  const totalPages = Math.max(1, Math.ceil(computedTotal / limit));
+
+  const allCachedItems = useMemo(() => {
+    const pageValues = pages ? Object.values(pages).flat() : [];
+    if (pageValues.length === 0) return sanitizeProductsImages(products);
+    // de-duplicate by id/slug
+    const map = new Map<string, Product>();
+    for (const p of pageValues) {
+      const key = p.id ?? p.slug ?? JSON.stringify(p);
+      map.set(String(key), p);
+    }
+    for (const p of sanitizeProductsImages(products)) {
+      const key = p.id ?? p.slug ?? JSON.stringify(p);
+      if (!map.has(String(key))) map.set(String(key), p);
+    }
+    return Array.from(map.values());
+  }, [pages, products]);
+
+  const filtersActive = Boolean(nameQuery.trim());
+
+  const filteredAll = useMemo(() => {
+    const nq = nameQuery.trim().toLowerCase();
+    if (!nq) return allCachedItems;
+    return allCachedItems.filter((p) =>
+      String(p.name ?? "")
+        .toLowerCase()
+        .includes(nq)
+    );
+  }, [allCachedItems, nameQuery]);
+
+  useEffect(() => {
+    dispatch(setCurrentPage(1));
+  }, [nameQuery]);
+
+  const sourceList = filtersActive ? filteredAll : currentProducts;
+  const displayTotal = filtersActive ? filteredAll.length : computedTotal;
+  const totalPages = Math.max(1, Math.ceil(displayTotal / limit));
+
+  const displayedProducts = useMemo(() => {
+    if (!filtersActive) return sourceList;
+    const start = (currentPage - 1) * limit;
+    return filteredAll.slice(start, start + limit);
+  }, [filtersActive, filteredAll, sourceList, currentPage, limit]);
 
   const handlePageChange = (page: number) => {
     if (page < 1 || page > totalPages) return;
@@ -139,22 +181,48 @@ const Products: FC<ProductsProps> = ({ products }) => {
     dispatch(setCurrentPage(1));
   };
 
+  const router = useRouter();
+  const handleClick = () => {
+    router.push("products/create");
+  };
+
   return (
     <>
-      <div className="my-4">
-        <span className="text-4xl">Products</span>
+      <div className="my-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-4">
+        <div>
+          <h2 className="text-4xl">Products</h2>
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 mt-3 sm:mt-0 w-full sm:justify-end">
+          <input
+            type="text"
+            className="px-3 py-2 rounded-lg bg-foreground/15 outline-0 focus:ring-2 focus:ring-foreground transition"
+            placeholder="Search by name..."
+            value={nameQuery}
+            onChange={(e) => setNameQuery(e.target.value)}
+          />
+          <div>
+            <button
+              type="button"
+              className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-success  hover:bg-success/70 focus:outline-none cursor-pointer"
+              onClick={handleClick}
+            >
+              Create
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4">
-        {isLoading ? (
+        {isLoading && !filtersActive ? (
           Array.from({ length: limit }).map((_, i) => (
             <div
               key={i}
               className="h-56 bg-foreground/8 rounded-lg animate-pulse"
             />
           ))
-        ) : currentProducts.length > 0 ? (
-          currentProducts.map((product) => (
+        ) : displayedProducts.length > 0 ? (
+          displayedProducts.map((product) => (
             <ProductCard key={product.id ?? product.slug} product={product} />
           ))
         ) : (
@@ -162,7 +230,11 @@ const Products: FC<ProductsProps> = ({ products }) => {
             {error ? (
               <p className="text-red-500">{error}</p>
             ) : (
-              <p className="text-gray-500">No products available.</p>
+              <p className="text-gray-500">
+                {filtersActive
+                  ? "No products match your filters."
+                  : "No products available."}
+              </p>
             )}
           </div>
         )}
@@ -231,4 +303,5 @@ const Products: FC<ProductsProps> = ({ products }) => {
     </>
   );
 };
+
 export default Products;
