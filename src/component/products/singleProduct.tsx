@@ -155,6 +155,38 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
       };
       setLocalProduct(merged);
       dispatch(setSingleProduct(merged));
+
+      // update cached pages and top-level items list with the edited product
+      try {
+        const matchKey = String(merged.id ?? merged.slug ?? "");
+        if (pages && typeof pages === "object") {
+          Object.keys(pages).forEach((key) => {
+            const items = (pages as Record<string, Product[]>)[key] || [];
+            const newItems = items.map((p) =>
+              String(p.id ?? p.slug) === matchKey ? { ...p, ...merged } : p
+            );
+            // only dispatch if changed
+            const changed =
+              items.length === newItems.length &&
+              items.some((it, idx) => it !== newItems[idx]);
+            if (changed) {
+              dispatch(setPage({ key, items: newItems }));
+            }
+          });
+        }
+
+        if (Array.isArray(itemsList) && itemsList.length > 0) {
+          const newList = itemsList.map((p) =>
+            String(p.id ?? p.slug) === matchKey ? { ...p, ...merged } : p
+          );
+          if (JSON.stringify(newList) !== JSON.stringify(itemsList)) {
+            dispatch(setProducts(newList));
+          }
+        }
+      } catch (cacheErr) {
+        console.error("Failed to update redux cache after edit:", cacheErr);
+      }
+
       setSuccessMessage("Product updated");
       setTimeout(() => {
         closeModal();
@@ -173,7 +205,6 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
     setIsDeleteModalOpen(true);
   };
 
-  // perform delete after confirmation and update redux cache
   const confirmDelete = async () => {
     setFormError(null);
     if (!localProduct.id) {
