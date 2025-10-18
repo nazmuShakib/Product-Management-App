@@ -455,9 +455,18 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
               className="w-full sm:w-48 px-3 py-2 rounded-lg bg-foreground/15 outline-0 focus:ring-2 focus:ring-foreground transition"
               disabled={isCategoriesLoading}
             >
-              <option value="">All Categories</option>
+              <option
+                value=""
+                className="text-background dark:text-foreground dark:bg-background"
+              >
+                All Categories
+              </option>
               {categories.map((c) => (
-                <option key={c.id} value={c.id}>
+                <option
+                  key={c.id}
+                  value={c.id}
+                  className="text-background dark:text-foreground dark:bg-background"
+                >
                   {c.name}
                 </option>
               ))}
