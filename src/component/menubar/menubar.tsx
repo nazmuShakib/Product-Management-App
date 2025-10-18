@@ -59,8 +59,8 @@ const MenuBar: FC<{ children: ReactNode }> = ({ children }) => {
           showNavbar ? "translate-y-0" : "-translate-y-full"
         }`}
       >
-        <div className="h-16 bg-menubar flex justify-between items-center p-2 sm:p-4 md:p-6 lg:p-8">
-          <div className="text-foreground flex gap-4 items-center">
+        <div className="h-16 bg-menubar flex justify-between items-center px-1 sm:p-2 md:p-6 lg:p-8 overflow-hidden">
+          <div className="text-foreground flex sm:gap-4 items-center">
             <div className="flex items-center gap-2">
               <Image
                 src="/product-management.png"
@@ -69,12 +69,12 @@ const MenuBar: FC<{ children: ReactNode }> = ({ children }) => {
                 height={30}
                 className="filter invert"
               />
-              <div className="max-w-16">
+              <div className="max-w-16 hidden sm:block">
                 <p className="text-sm">Product Management</p>
               </div>
             </div>
           </div>
-          <nav className="hidden md:flex gap-2 items-center justify-center">
+          <nav className="flex gap-1 sm:gap-2 items-center justify-center">
             {menus.map((m) => {
               const active = pathname === m.href;
               return (

@@ -14,6 +14,7 @@ import { RootState } from "@/store/store";
 import ProductCard from "./productCard";
 import { MdOutlineSkipPrevious, MdOutlineSkipNext } from "react-icons/md";
 import { useRouter } from "next/navigation";
+import Loading from "../loading/loading";
 
 interface ProductsProps {
   products: Product[];
@@ -151,6 +152,20 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
     dispatch(setCurrentPage(1));
   }, [nameQuery]);
 
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Add this useEffect to detect mobile screens
+  useEffect(() => {
+    const checkIfMobile = () => {
+      setIsMobile(window.innerWidth < 640);
+    };
+
+    checkIfMobile();
+    window.addEventListener("resize", checkIfMobile);
+
+    return () => window.removeEventListener("resize", checkIfMobile);
+  }, []);
+
   const sourceList = filtersActive ? filteredAll : currentProducts;
   const displayTotal = filtersActive ? filteredAll.length : computedTotal;
   const totalPages = Math.max(1, Math.ceil(displayTotal / limit));
@@ -176,7 +191,7 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
   const handleClick = () => {
     router.push("products/create");
   };
-
+  if (products.length === 0) return <Loading />;
   return (
     <>
       <div className="my-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-4">
@@ -187,7 +202,7 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 mt-3 sm:mt-0 w-full sm:justify-end">
           <input
             type="text"
-            className="px-3 py-2 rounded-lg bg-foreground/15 outline-0 focus:ring-2 focus:ring-foreground transition"
+            className="order-last sm:order-first px-3 py-2 rounded-lg bg-foreground/15 outline-0 focus:ring-2 focus:ring-foreground transition"
             placeholder="Search by name..."
             value={nameQuery}
             onChange={(e) => setNameQuery(e.target.value)}
@@ -195,7 +210,7 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
           <div>
             <button
               type="button"
-              className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-success  hover:bg-success/70 focus:outline-none cursor-pointer"
+              className="w-full sm:order-last order-first sm:inline-flex items-center justify-center px-4 py-2 rounded-lg bg-success  hover:bg-success/70 focus:outline-none cursor-pointer"
               onClick={handleClick}
             >
               Create
@@ -234,54 +249,67 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
         )}
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-4 mb-4 px-4">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col items-center sm:flex-row sm:justify-end gap-4 mb-4 px-4 w-full">
+        {/* Pagination controls */}
+        <div className="flex items-center justify-center w-full sm:justify-end">
           <button
             onClick={() => handlePageChange(currentPage - 1)}
             disabled={currentPage === 1 || isLoading}
-            className="px-4 py-2 bg-foreground/15 rounded-lg disabled:opacity-50"
+            className="px-3 py-1 bg-foreground/15 rounded-lg disabled:opacity-50 flex-shrink-0"
             aria-label="Previous page"
           >
             <MdOutlineSkipPrevious size={20} />
           </button>
 
-          <div className="flex items-center gap-2">
-            {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
-              const half = Math.floor(7 / 2);
-              const start = Math.max(
-                1,
-                Math.min(currentPage - half, totalPages - 6)
-              );
-              const pageNum = start + i;
-              if (pageNum > totalPages) return null;
-              return (
-                <button
-                  key={pageNum}
-                  onClick={() => handlePageChange(pageNum)}
-                  className={`px-3 py-1 rounded-lg ${
-                    pageNum === currentPage
-                      ? "bg-foreground text-background"
-                      : "bg-foreground/15"
-                  }`}
-                >
-                  {pageNum}
-                </button>
-              );
-            })}
+          <div className="flex items-center overflow-x-auto mx-1 px-1 scrollbar-none max-w-full sm:max-w-none">
+            {Array.from(
+              { length: Math.min(totalPages, isMobile ? 4 : 7) },
+              (_, i) => {
+                const visiblePages = isMobile ? 4 : 7;
+                const half = Math.floor(visiblePages / 2);
+                const start = Math.max(
+                  1,
+                  Math.min(currentPage - half, totalPages - (visiblePages - 1))
+                );
+                const pageNum = start + i;
+                if (pageNum > totalPages) return null;
+
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => handlePageChange(pageNum)}
+                    className={`min-w-[36px] px-2 py-1 mx-1 rounded-lg flex-shrink-0 text-center ${
+                      pageNum === currentPage
+                        ? "bg-foreground text-background"
+                        : "bg-foreground/15"
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              }
+            )}
+
+            {/* Show ellipsis when there are more pages */}
+            {totalPages > (isMobile ? 3 : 7) &&
+              currentPage < totalPages - 1 && (
+                <span className="px-2 flex-shrink-0">...</span>
+              )}
           </div>
 
           <button
             onClick={() => handlePageChange(currentPage + 1)}
             disabled={currentPage === totalPages || isLoading}
-            className="px-4 py-2 bg-foreground/15 rounded-lg disabled:opacity-50"
+            className="px-3 py-1 bg-foreground/15 rounded-lg disabled:opacity-50 flex-shrink-0"
             aria-label="Next page"
           >
             <MdOutlineSkipNext size={20} />
           </button>
         </div>
 
-        <div className="flex items-center gap-2">
-          <label className="text-sm">Items per page:</label>
+        {/* Items per page selector */}
+        <div className="flex items-center gap-2 mt-2 sm:mt-0">
+          <label className="text-sm whitespace-nowrap">Items per page:</label>
           <select
             value={limit}
             onChange={(e) => handleLimitChange(Number(e.target.value))}
