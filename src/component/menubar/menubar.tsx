@@ -118,7 +118,7 @@ const LogoutPopUp: FC<{ handleLogout: () => void }> = ({ handleLogout }) => {
 
   return (
     <div className="fixed inset-0 bg-background/50 flex justify-center items-center z-50 transition-all duration-200">
-      <div className="w-[90%] px-2 py-4 md:w-[60%] md:p-4 lg:w-[40%] lg:p-6 xl:w-[30%] bg-foreground/30 rounded-lg shadow-md">
+      <div className="w-[90%] px-2 py-4 md:w-[60%] md:p-4 lg:w-[40%] lg:p-6 xl:w-[30%] bg-background/90 rounded-lg shadow-md">
         <p className="text-center text-lg md:text-xl lg:text-2xl mb-4">
           Are you sure you want to logout?
         </p>
