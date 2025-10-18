@@ -1,24 +1,33 @@
 import { FC } from "react";
 import Link from "next/link";
-import { Category } from "@/store/categorySlice";
-
-interface Product {
-  name: string;
-  price: number;
-  slug: string;
-  images?: string[] | null;
-  category: Category;
-}
+import { RiDeleteBin6Line } from "react-icons/ri";
+import { Product } from "@/store/productSlice";
 
 interface ProductCardProps {
   product: Product;
+  onDeleteClick: (product: Product) => void;
 }
 
-const ProductCard: FC<ProductCardProps> = ({ product }) => {
+const ProductCard: FC<ProductCardProps> = ({ product, onDeleteClick }) => {
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onDeleteClick(product);
+  };
+
   return (
     <Link href={`/products/${product.slug}`} className="block group">
-      <div className="bg-foreground/15 rounded-lg shadow-lg overflow-hidden transition-all duration-200 ease-in-out hover:cursor-pointer hover:scale-[0.992] hover:shadow-2xl">
-        <div className="w-full h-48 bg-gray-200 flex items-center justify-center">
+      <div className="bg-foreground/15 rounded-lg shadow-lg overflow-hidden transition-all duration-200 ease-in-out hover:cursor-pointer hover:scale-[0.992] hover:shadow-2xl relative">
+        <div className="w-full h-48 bg-gray-200 flex items-center justify-center relative">
+          <button
+            onClick={handleDeleteClick}
+            className="absolute top-2 right-2 z-10 bg-red-600 text-white p-2 rounded-full
+              opacity-70 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity duration-200
+              hover:bg-red-700"
+            aria-label="Delete product"
+          >
+            <RiDeleteBin6Line size={16} />
+          </button>
           {product.images && product.images.length > 0 ? (
             <img
               src={product.images[0]}
