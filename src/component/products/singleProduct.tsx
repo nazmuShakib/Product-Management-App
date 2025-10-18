@@ -34,6 +34,43 @@ const isValidImageUrl = (url?: string) => {
   return /\.(jpe?g|png|gif|webp|avif|svg)$/i.test(pathname);
 };
 
+const isAbortError = (err: unknown) =>
+  typeof err === "object" &&
+  err !== null &&
+  "name" in err &&
+  (err as { name?: unknown }).name === "AbortError";
+
+const getErrorMessage = (err: unknown) =>
+  err instanceof Error ? err.message : String(err ?? "");
+
+/** Safely extract category id from product.category which may be object or id string */
+const extractCategoryId = (cat: unknown): string | undefined => {
+  if (!cat) return undefined;
+  if (typeof cat === "string" || typeof cat === "number") return String(cat);
+  if (typeof cat === "object") {
+    const rec = cat as Record<string, unknown>;
+    if (rec.id !== undefined) return String(rec.id);
+    if (rec._id !== undefined) return String(rec._id);
+    if (rec.slug !== undefined) return String(rec.slug);
+  }
+  return undefined;
+};
+
+const extractCategoryName = (cat: unknown): string | undefined => {
+  if (!cat) return undefined;
+  if (typeof cat === "string") return cat;
+  if (typeof cat === "object") {
+    const rec = cat as Record<string, unknown>;
+    if (rec.name !== undefined) return String(rec.name);
+  }
+  return undefined;
+};
+
+const imagesToStringArray = (imgs: unknown): string[] =>
+  Array.isArray(imgs)
+    ? imgs.filter((i): i is string => typeof i === "string")
+    : [];
+
 const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
   const dispatch = useDispatch();
   const router = useRouter();
@@ -46,7 +83,14 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
   const itemsList = useSelector((state: RootState) => state.products.items);
 
   const cachedProduct = useSelector(
-    (state: any) => state.products?.singleProducts?.[slug]
+    (state: RootState) =>
+      // safe access of dynamic key, cast to Product | undefined
+      (
+        (state.products.singleProducts || {}) as Record<
+          string,
+          Product | undefined
+        >
+      )[slug]
   );
   const singleproduct = cachedProduct || product;
 
@@ -61,7 +105,7 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
   }, [singleproduct, dispatch]);
 
   const allImages = localProduct.images || [];
-  const images = allImages.filter(isValidImageUrl);
+  const images = imagesToStringArray(allImages).filter(isValidImageUrl);
   const [currentIndex, setCurrentIndex] = useState(0);
 
   // Edit modal states
@@ -74,10 +118,10 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
     localProduct.price ?? 0
   );
   const [editCategory, setEditCategory] = useState<string>(
-    (localProduct.category as any)?.id ?? ""
+    extractCategoryId(localProduct.category) ?? ""
   );
   const [editImages, setEditImages] = useState<string[]>(
-    (localProduct.images as string[]) || []
+    imagesToStringArray(localProduct.images)
   );
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoadingCategories, setIsLoadingCategories] = useState(false);
@@ -94,8 +138,8 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
     setEditName(localProduct.name ?? "");
     setEditDescription(localProduct.description ?? "");
     setEditPrice(localProduct.price ?? 0);
-    setEditCategory((localProduct.category as any)?.id ?? "");
-    setEditImages((localProduct.images as string[]) || []);
+    setEditCategory(extractCategoryId(localProduct.category) ?? "");
+    setEditImages(imagesToStringArray(localProduct.images));
   }, [localProduct]);
 
   // Fetch categories
@@ -114,9 +158,10 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
         const data = await res.json();
         const items =
           data?.categories ?? data?.items ?? (Array.isArray(data) ? data : []);
-        setCategories(items);
-      } catch (err: any) {
-        console.error("Failed to load categories:", err);
+        setCategories(items as Category[]);
+      } catch (err: unknown) {
+        if (!isAbortError(err))
+          console.error("Failed to load categories:", err);
       } finally {
         setIsLoadingCategories(false);
       }
@@ -143,8 +188,8 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
     setEditName(localProduct.name ?? "");
     setEditDescription(localProduct.description ?? "");
     setEditPrice(localProduct.price ?? 0);
-    setEditCategory((localProduct.category as any)?.id ?? "");
-    setEditImages((localProduct.images as string[]) || []);
+    setEditCategory(extractCategoryId(localProduct.category) ?? "");
+    setEditImages(imagesToStringArray(localProduct.images));
     setIsModalOpen(true);
   };
 
@@ -180,7 +225,7 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
     const description = String(editDescription ?? "").trim();
     const price = Number(editPrice);
     const categoryId = editCategory;
-    const images = editImages.filter(Boolean).map((img) => img.trim());
+    const imagesArr = editImages.filter(Boolean).map((img) => img.trim());
 
     if (!name) {
       setFormError("Name is required");
@@ -220,7 +265,7 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
             description,
             price,
             categoryId,
-            images,
+            images: imagesArr,
           }),
           cache: "no-store",
         }
@@ -241,7 +286,7 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
         description,
         price,
         category: selectedCategory || localProduct.category,
-        images,
+        images: imagesArr,
       };
 
       setLocalProduct(merged);
@@ -256,7 +301,6 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
             const newItems = items.map((p) =>
               String(p.id ?? p.slug) === matchKey ? { ...p, ...merged } : p
             );
-            // only dispatch if changed
             const changed =
               items.length === newItems.length &&
               items.some((it, idx) => it !== newItems[idx]);
@@ -274,7 +318,7 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
             dispatch(setProducts(newList));
           }
         }
-      } catch (cacheErr) {
+      } catch (cacheErr: unknown) {
         console.error("Failed to update redux cache after edit:", cacheErr);
       }
 
@@ -282,9 +326,9 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
       setTimeout(() => {
         closeModal();
       }, 900);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setFormError(err?.message ?? "Failed to update product");
+      setFormError(getErrorMessage(err) || "Failed to update product");
     } finally {
       setIsSubmitting(false);
     }
@@ -355,14 +399,14 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
         }
 
         dispatch(setSingleProduct({} as Product));
-      } catch (cacheErr) {
+      } catch (cacheErr: unknown) {
         console.error("Failed to update redux cache after delete:", cacheErr);
       }
 
       router.push("/products");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setFormError(err?.message ?? "Failed to delete product");
+      setFormError(getErrorMessage(err) || "Failed to delete product");
     } finally {
       setIsDeleting(false);
       setIsDeleteModalOpen(false);
@@ -401,6 +445,7 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
 
       <div className="relative mb-6">
         {images && images.length > 0 ? (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={images[currentIndex]}
             alt={`${localProduct.name} image ${currentIndex + 1}`}
@@ -440,7 +485,7 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
         <div className="flex flex-col text-lg">
           <span className="text-sm">Category</span>
           <span className="font-semibold">
-            {(localProduct.category as { name?: string } | undefined)?.name}
+            {extractCategoryName(localProduct.category)}
           </span>
         </div>
       </div>
@@ -593,8 +638,8 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
           <div className="w-full max-w-sm bg-background/70 rounded shadow-lg p-5">
             <h3 className="text-lg font-semibold mb-3">Confirm Delete</h3>
             <p className="text-sm mb-4">
-              Are you sure you want to delete "
-              <span className="font-medium">{localProduct.name}</span>"? This
+              Are you sure you want to delete{" "}
+              <span className="font-medium">{localProduct.name}</span>? This
               action cannot be undone.
             </p>
 

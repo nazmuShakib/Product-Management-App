@@ -106,10 +106,16 @@ const CategoryList: FC<CategoryListProps> = ({ categories: initial = [] }) => {
         if (page === 1 && !debouncedQuery) {
           dispatch(setCategories(list));
         }
-      } catch (err: any) {
-        if (err.name !== "AbortError") {
+      } catch (err: unknown) {
+        // handle AbortError without using `any`
+        const name =
+          typeof err === "object" && err !== null && "name" in err
+            ? (err as { name?: unknown }).name
+            : undefined;
+        if (name !== "AbortError") {
           console.error(err);
-          setError(err?.message ?? "Failed to fetch categories");
+          const msg = err instanceof Error ? err.message : String(err ?? "");
+          setError(msg || "Failed to fetch categories");
         }
       } finally {
         setIsLoading(false);
@@ -188,8 +194,12 @@ const CategoryList: FC<CategoryListProps> = ({ categories: initial = [] }) => {
             if (typeof serverTotal === "number") {
               setTotal(serverTotal);
             }
-          } catch (e: any) {
-            if (e.name === "AbortError") break;
+          } catch (e: unknown) {
+            const ename =
+              typeof e === "object" && e !== null && "name" in e
+                ? (e as { name?: unknown }).name
+                : undefined;
+            if (ename === "AbortError") break;
             console.warn("prefetch error", e);
             break;
           }

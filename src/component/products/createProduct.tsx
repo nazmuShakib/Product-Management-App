@@ -35,6 +35,9 @@ interface CreateProductProps {
   categories: Category[];
 }
 
+const getErrorMessage = (err: unknown) =>
+  err instanceof Error ? err.message : String(err ?? "Unknown error");
+
 const CreateProduct: FC<CreateProductProps> = ({ categories }) => {
   const [form, setForm] = useState<ProductForm>(emptyProduct);
   const [errors, setErrors] = useState<Record<string, string | string[]>>({});
@@ -56,8 +59,8 @@ const CreateProduct: FC<CreateProductProps> = ({ categories }) => {
     dispatch(setCategories(categories));
   }, [dispatch, categories]);
 
-  const setField = (key: keyof ProductForm, value: any) => {
-    setForm((s) => ({ ...s, [key]: value }));
+  const setField = (key: keyof ProductForm, value: ProductForm[typeof key]) => {
+    setForm((s) => ({ ...s, [key]: value } as ProductForm));
     setErrors((e) => {
       const copy = { ...e };
       delete copy[key as string];
@@ -94,7 +97,7 @@ const CreateProduct: FC<CreateProductProps> = ({ categories }) => {
 
     const parsed = ProductSchema.safeParse(payload);
     if (!parsed.success) {
-      const zodErrors: Record<string, any> = {};
+      const zodErrors: Record<string, string | string[]> = {};
       for (const issue of parsed.error.issues) {
         const pathKey = String(issue.path[0] ?? 0);
         if (!zodErrors[pathKey]) zodErrors[pathKey] = issue.message;
@@ -125,13 +128,15 @@ const CreateProduct: FC<CreateProductProps> = ({ categories }) => {
         throw new Error(text || `Server responded ${res.status}`);
       }
 
-      const created = await res.json();
+      // consume response but we don't need to use it here
+      await res.json();
+
       setSuccess("Product created successfully.");
       setForm(emptyProduct);
       setErrors({});
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setServerError(err?.message ?? "Failed to create product");
+      setServerError(getErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -191,7 +196,7 @@ const CreateProduct: FC<CreateProductProps> = ({ categories }) => {
           ) : categoriesError ? (
             <option disabled>Error loading categories</option>
           ) : (
-            categories.map((c: any) => (
+            categories.map((c: Category) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
@@ -263,7 +268,7 @@ const CreateProduct: FC<CreateProductProps> = ({ categories }) => {
         <input
           type="number"
           value={form.price}
-          onChange={(e) => setField("price", Number(e.target.value))}
+          onChange={(e) => setField("price", Number(e.target.value) as number)}
           className="mt-1 block w-full px-3 py-2 border rounded outline-0 focus:ring-2 focus:ring-foreground transition duration-200"
           min={0}
           step="0.01"

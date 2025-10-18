@@ -42,6 +42,28 @@ const sanitizeProductsImages = (items: Product[]): Product[] =>
     ) as unknown as Product["images"],
   }));
 
+// small helpers to avoid using `any`
+const isAbortError = (err: unknown) =>
+  typeof err === "object" &&
+  err !== null &&
+  "name" in err &&
+  (err as { name?: unknown }).name === "AbortError";
+
+const getErrorMessage = (err: unknown) =>
+  err instanceof Error ? err.message : String(err ?? "");
+
+const getProductCategoryId = (p: Product): string | undefined => {
+  const asRecord = p as unknown as Record<string, unknown>;
+  const catObj = asRecord.category;
+  if (catObj && typeof catObj === "object") {
+    const id = (catObj as Record<string, unknown>).id;
+    if (id !== undefined) return String(id);
+  }
+  const catId = asRecord.categoryId;
+  if (catId !== undefined) return String(catId);
+  return undefined;
+};
+
 const Products: FC<ProductsProps> = ({ products: p }) => {
   const dispatch = useDispatch();
   const token = useSelector((state: RootState) => state.auth.token);
@@ -121,10 +143,10 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
 
         dispatch(setPage({ key, items: sanitizedItems }));
         setCurrentProducts(sanitizedItems);
-      } catch (err: any) {
-        if (err.name !== "AbortError") {
+      } catch (err: unknown) {
+        if (!isAbortError(err)) {
           console.error(err);
-          setError(err.message ?? "Failed to load products");
+          setError(getErrorMessage(err) || "Failed to load products");
         }
       } finally {
         setIsLoading(false);
@@ -150,7 +172,8 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
         const items: Category[] =
           data?.categories ?? data?.items ?? (Array.isArray(data) ? data : []);
         dispatch(setCategories(items));
-      } catch (err: any) {
+      } catch (err: unknown) {
+        // do not treat AbortError specially here; just log
         console.error("Failed to fetch categories:", err);
       } finally {
         setIsCategoriesLoading(false);
@@ -158,7 +181,7 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
     };
 
     fetchCategories();
-  }, [token]);
+  }, [token, dispatch]);
 
   const computedTotal = storedTotal ?? localTotal;
 
@@ -166,13 +189,13 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
     const pageValues = pages ? Object.values(pages).flat() : [];
     if (pageValues.length === 0) return sanitizeProductsImages(products);
     const map = new Map<string, Product>();
-    for (const p of pageValues) {
-      const key = p.id ?? p.slug ?? JSON.stringify(p);
-      map.set(String(key), p);
+    for (const prod of pageValues) {
+      const key = prod.id ?? prod.slug ?? JSON.stringify(prod);
+      map.set(String(key), prod);
     }
-    for (const p of sanitizeProductsImages(products)) {
-      const key = p.id ?? p.slug ?? JSON.stringify(p);
-      if (!map.has(String(key))) map.set(String(key), p);
+    for (const prod of sanitizeProductsImages(products)) {
+      const key = prod.id ?? prod.slug ?? JSON.stringify(prod);
+      if (!map.has(String(key))) map.set(String(key), prod);
     }
     return Array.from(map.values());
   }, [pages, products]);
@@ -183,22 +206,18 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
   const filteredAll = useMemo(() => {
     const nq = nameQuery.trim().toLowerCase();
     const catId = categoryFilter;
-    return allCachedItems.filter((p) => {
+    return allCachedItems.filter((prod) => {
       const nameMatch =
         !nq ||
-        String(p.name ?? "")
+        String(prod.name ?? "")
           .toLowerCase()
           .includes(nq);
 
-      // category can be nested object or categoryId field
       let categoryMatch = true;
       if (catId) {
-        const catObj = (p.category as any) || {};
+        const prodCatId = getProductCategoryId(prod);
         categoryMatch =
-          String(catObj?.id ?? "").toLowerCase() ===
-            String(catId).toLowerCase() ||
-          String((p as any).categoryId ?? "").toLowerCase() ===
-            String(catId).toLowerCase();
+          String(prodCatId ?? "").toLowerCase() === String(catId).toLowerCase();
       }
 
       return nameMatch && categoryMatch;
@@ -255,9 +274,7 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
               (Array.isArray(data) ? data : []);
             const sanitizedItems = sanitizeProductsImages(items);
             dispatch(setPage({ key, items: sanitizedItems }));
-            dispatch(
-              setProducts([...((products as Product[]) || []), ...items])
-            );
+            dispatch(setProducts([...(products || []), ...items]));
             const serverTotal =
               data?.totalCount ??
               data?.meta?.totalCount ??
@@ -267,8 +284,8 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
               dispatch(setTotalCount(serverTotal));
               setLocalTotal(serverTotal);
             }
-          } catch (e: any) {
-            if (e.name === "AbortError") {
+          } catch (e: unknown) {
+            if (isAbortError(e)) {
               aborted = true;
               break;
             }
@@ -290,7 +307,7 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
       prefetchAbortRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtersActive]);
+  }, [filtersActive, dispatch]);
 
   const [isMobile, setIsMobile] = useState(false);
 
@@ -376,7 +393,7 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
           Object.keys(pages).forEach((key) => {
             const items = (pages as Record<string, Product[]>)[key] || [];
             const filtered = items.filter(
-              (p) => String(p.id ?? p.slug) !== removeKey
+              (it) => String(it.id ?? it.slug) !== removeKey
             );
             if (filtered.length !== items.length) {
               dispatch(setPage({ key, items: filtered }));
@@ -387,7 +404,7 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
         // Update items list in redux
         if (Array.isArray(products) && products.length > 0) {
           const newItems = products.filter(
-            (p) => String(p.id ?? p.slug) !== removeKey
+            (it) => String(it.id ?? it.slug) !== removeKey
           );
           if (newItems.length !== products.length) {
             dispatch(setProducts(newItems));
@@ -396,7 +413,7 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
 
         // Update current displayed products
         setCurrentProducts((prev) =>
-          prev.filter((p) => String(p.id ?? p.slug) !== removeKey)
+          prev.filter((it) => String(it.id ?? it.slug) !== removeKey)
         );
 
         // Decrement total count
@@ -405,15 +422,15 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
           dispatch(setTotalCount(newTotal));
           setLocalTotal((prev) => Math.max(0, prev - 1));
         }
-      } catch (cacheErr) {
+      } catch (cacheErr: unknown) {
         console.error("Failed to update redux cache after delete:", cacheErr);
       }
 
       // Close the modal
       setProductToDelete(null);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setDeleteError(err?.message ?? "Failed to delete product");
+      setDeleteError(getErrorMessage(err) ?? "Failed to delete product");
     } finally {
       setIsDeleting(false);
     }
@@ -501,7 +518,7 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
           displayedProducts.map((product) => (
             <ProductCard
               key={product.id ?? product.slug}
-              product={product as unknown as any}
+              product={product}
               onDeleteClick={handleDeleteClick}
             />
           ))
@@ -612,8 +629,8 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
           <div className="w-full max-w-sm bg-background rounded shadow-lg p-5">
             <h3 className="text-lg font-semibold mb-3">Confirm Delete</h3>
             <p className="text-sm mb-4">
-              Are you sure you want to delete "
-              <span className="font-medium">{productToDelete.name}</span>"? This
+              Are you sure you want to delete{" "}
+              <span className="font-medium">{productToDelete.name}</span>? This
               action cannot be undone.
             </p>
 
