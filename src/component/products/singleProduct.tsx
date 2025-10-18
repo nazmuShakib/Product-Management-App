@@ -12,12 +12,15 @@ import {
   setProducts,
 } from "@/store/productSlice";
 import { RootState } from "@/store/store";
+import { Category } from "@/store/categorySlice";
+import { CgClose } from "react-icons/cg";
 
 interface SingleProductProps {
   product: Product;
   slug: string;
 }
 
+/** Validate image URL: only accept absolute http(s) and common image extensions */
 const isValidImageUrl = (url?: string) => {
   if (!url || typeof url !== "string") return false;
   if (url.includes("localhost")) return false;
@@ -55,27 +58,72 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
     if (singleproduct) {
       dispatch(setSingleProduct(singleproduct));
     }
-  }, [singleproduct]);
+  }, [singleproduct, dispatch]);
 
   const allImages = localProduct.images || [];
   const images = allImages.filter(isValidImageUrl);
   const [currentIndex, setCurrentIndex] = useState(0);
 
+  // Edit modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editName, setEditName] = useState(localProduct.name ?? "");
   const [editDescription, setEditDescription] = useState(
     localProduct.description ?? ""
   );
+  const [editPrice, setEditPrice] = useState<number | string>(
+    localProduct.price ?? 0
+  );
+  const [editCategory, setEditCategory] = useState<string>(
+    (localProduct.category as any)?.id ?? ""
+  );
+  const [editImages, setEditImages] = useState<string[]>(
+    (localProduct.images as string[]) || []
+  );
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [isLoadingCategories, setIsLoadingCategories] = useState(false);
+
+  // Other state variables
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  // Update form fields when product changes
   useEffect(() => {
     setEditName(localProduct.name ?? "");
     setEditDescription(localProduct.description ?? "");
+    setEditPrice(localProduct.price ?? 0);
+    setEditCategory((localProduct.category as any)?.id ?? "");
+    setEditImages((localProduct.images as string[]) || []);
   }, [localProduct]);
+
+  // Fetch categories
+  useEffect(() => {
+    const fetchCategories = async () => {
+      setIsLoadingCategories(true);
+      try {
+        const res = await fetch("https://api.bitechx.com/categories", {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          cache: "no-store",
+        });
+
+        if (!res.ok)
+          throw new Error(`Failed to fetch categories: ${res.status}`);
+
+        const data = await res.json();
+        const items =
+          data?.categories ?? data?.items ?? (Array.isArray(data) ? data : []);
+        setCategories(items);
+      } catch (err: any) {
+        console.error("Failed to load categories:", err);
+      } finally {
+        setIsLoadingCategories(false);
+      }
+    };
+
+    fetchCategories();
+  }, [token]);
 
   const handlePrev = () => {
     setCurrentIndex((prevIndex) =>
@@ -94,6 +142,9 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
     setSuccessMessage(null);
     setEditName(localProduct.name ?? "");
     setEditDescription(localProduct.description ?? "");
+    setEditPrice(localProduct.price ?? 0);
+    setEditCategory((localProduct.category as any)?.id ?? "");
+    setEditImages((localProduct.images as string[]) || []);
     setIsModalOpen(true);
   };
 
@@ -103,6 +154,23 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
     setFormError(null);
   };
 
+  // Helper functions for image management
+  const handleImageChange = (index: number, value: string) => {
+    const newImages = [...editImages];
+    newImages[index] = value;
+    setEditImages(newImages);
+  };
+
+  const addImageField = () => {
+    setEditImages([...editImages, ""]);
+  };
+
+  const removeImageField = (index: number) => {
+    const newImages = [...editImages];
+    newImages.splice(index, 1);
+    setEditImages(newImages);
+  };
+
   const onSave = async (e?: React.FormEvent) => {
     e?.preventDefault();
     setFormError(null);
@@ -110,6 +178,9 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
 
     const name = String(editName ?? "").trim();
     const description = String(editDescription ?? "").trim();
+    const price = Number(editPrice);
+    const categoryId = editCategory;
+    const images = editImages.filter(Boolean).map((img) => img.trim());
 
     if (!name) {
       setFormError("Name is required");
@@ -117,6 +188,14 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
     }
     if (!description) {
       setFormError("Description is required");
+      return;
+    }
+    if (isNaN(price) || price <= 0) {
+      setFormError("Valid price is required");
+      return;
+    }
+    if (!categoryId) {
+      setFormError("Category is required");
       return;
     }
     if (!localProduct.id) {
@@ -136,7 +215,13 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
             "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({ name, description }),
+          body: JSON.stringify({
+            name,
+            description,
+            price,
+            categoryId,
+            images,
+          }),
           cache: "no-store",
         }
       );
@@ -147,12 +232,18 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
       }
 
       const updated = await res.json();
+      const selectedCategory = categories.find((c) => c.id === categoryId);
+
       const merged: Product = {
         ...localProduct,
         ...(updated ?? {}),
         name,
         description,
+        price,
+        category: selectedCategory || localProduct.category,
+        images,
       };
+
       setLocalProduct(merged);
       dispatch(setSingleProduct(merged));
 
@@ -356,7 +447,7 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
 
       <p className="text-base mb-6">{localProduct.description}</p>
 
-      {/* Edit Modal */}
+      {/* Enhanced Edit Modal with Price, Category, and Images */}
       {isModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
@@ -365,7 +456,7 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
         >
           <form
             onSubmit={(e) => onSave(e)}
-            className="w-full max-w-lg bg-background rounded shadow-xl p-6 border-1"
+            className="w-full max-w-lg bg-background rounded shadow-xl p-6 border-1 max-h-[90vh] overflow-y-auto"
           >
             <h2 className="text-lg font-semibold mb-4">Edit Product</h2>
 
@@ -385,22 +476,97 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
               />
             </label>
 
+            <label className="block mb-3">
+              <span className="text-sm font-medium">Price</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={editPrice}
+                onChange={(e) => setEditPrice(e.target.value)}
+                className="mt-1 block w-full px-3 py-2 border rounded outline-0 focus:ring-2 focus:ring-foreground transition duration-200"
+                aria-invalid={!editPrice}
+              />
+            </label>
+
+            <label className="block mb-3">
+              <span className="text-sm font-medium">Category</span>
+              <select
+                value={editCategory}
+                onChange={(e) => setEditCategory(e.target.value)}
+                className="mt-1 block w-full px-3 py-2 border rounded outline-0 focus:ring-2 focus:ring-foreground transition duration-200"
+                disabled={isLoadingCategories}
+                aria-invalid={!editCategory}
+              >
+                <option
+                  className="text-foreground bg-background dark:text-background dark:bg-foreground"
+                  value=""
+                >
+                  Select a category
+                </option>
+                {categories.map((category) => (
+                  <option
+                    key={category.id}
+                    value={category.id}
+                    className="text-foreground bg-background dark:text-background dark:bg-foreground"
+                  >
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+              {isLoadingCategories && (
+                <span className="text-xs">Loading categories...</span>
+              )}
+            </label>
+
             <label className="block mb-4">
               <span className="text-sm font-medium">Description</span>
               <textarea
                 value={editDescription}
                 onChange={(e) => setEditDescription(e.target.value)}
                 className="mt-1 block w-full px-3 py-2 border rounded outline-0 focus:ring-2 focus:ring-foreground transition duration-200"
-                rows={4}
+                rows={3}
                 aria-invalid={!editDescription.trim()}
               />
             </label>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">Images</label>
+              <div className="space-y-2">
+                {editImages.map((image, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={image}
+                      onChange={(e) => handleImageChange(index, e.target.value)}
+                      placeholder="Image URL"
+                      className="flex-1 px-3 py-2 border rounded outline-0 focus:ring-2 focus:ring-foreground transition duration-200"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeImageField(index)}
+                      className="p-2 bg-red-600 text-white rounded hover:bg-red-700 transition"
+                      aria-label="Remove image"
+                    >
+                      <CgClose />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={addImageField}
+                  className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                >
+                  Add Image URL
+                </button>
+              </div>
+            </div>
 
             <div className="flex justify-end gap-3">
               <button
                 type="button"
                 onClick={closeModal}
-                className="px-4 py-2 bg-gray-500 rounded"
+                className="px-4 py-2 bg-gray-500 text-white rounded"
                 disabled={isSubmitting}
               >
                 Cancel
@@ -438,7 +604,7 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
               <button
                 type="button"
                 onClick={cancelDelete}
-                className="px-4 py-2 bg-gray-500 rounded"
+                className="px-4 py-2 bg-gray-500 text-white rounded"
                 disabled={isDeleting}
               >
                 Cancel
@@ -458,4 +624,5 @@ const SingleProduct: FC<SingleProductProps> = ({ product, slug }) => {
     </div>
   );
 };
+
 export default SingleProduct;
