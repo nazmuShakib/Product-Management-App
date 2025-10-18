@@ -313,12 +313,20 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
           <select
             value={limit}
             onChange={(e) => handleLimitChange(Number(e.target.value))}
-            className="px-2 py-1 bg-foreground/15 rounded-lg"
+            className="px-2 py-1 dark:bg-background rounded-lg"
           >
-            <option value={4}>4</option>
-            <option value={8}>8</option>
-            <option value={12}>12</option>
-            <option value={16}>16</option>
+            <option className="text-background dark:text-foreground" value={4}>
+              4
+            </option>
+            <option className="text-background dark:text-foreground" value={8}>
+              8
+            </option>
+            <option className="text-background dark:text-foreground" value={12}>
+              12
+            </option>
+            <option className="text-background dark:text-foreground" value={16}>
+              16
+            </option>
           </select>
         </div>
       </div>
