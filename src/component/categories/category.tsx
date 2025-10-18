@@ -339,9 +339,11 @@ const CategoryList: FC<CategoryListProps> = ({ categories: initial = [] }) => {
         </div>
       </div>
 
-      {error && <div className="mb-4 text-red-600">{error}</div>}
+      {error && (
+        <div className="my-4 text-red-600 flex justify-center">{error}</div>
+      )}
       {isPrefetching && (
-        <div className="mb-2 text-sm text-gray-600">
+        <div className="my-4 text-sm text-gray-600 flex justify-center">
           Preparing local results...
         </div>
       )}
