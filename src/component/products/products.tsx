@@ -1,6 +1,6 @@
 "use client";
 
-import { FC, useEffect, useMemo, useState } from "react";
+import { FC, useEffect, useMemo, useState, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   setPage,
@@ -11,6 +11,7 @@ import {
   setProducts,
 } from "@/store/productSlice";
 import { RootState } from "@/store/store";
+import { Category, setCategories } from "@/store/categorySlice";
 import ProductCard from "./productCard";
 import { MdOutlineSkipPrevious, MdOutlineSkipNext } from "react-icons/md";
 import { useRouter } from "next/navigation";
@@ -54,10 +55,15 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
   );
   const limit = useSelector((state: RootState) => state.products.limit ?? 8);
   const products = useSelector((state: RootState) => state.products.items);
+  const categories = useSelector((state: RootState) => state.categories.list);
   const [currentProducts, setCurrentProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [localTotal, setLocalTotal] = useState<number>(p.length);
+
+  // Category search states
+  const [categoryFilter, setCategoryFilter] = useState<string>("");
+  const [isCategoriesLoading, setIsCategoriesLoading] = useState(false);
 
   // States for delete functionality
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
@@ -65,6 +71,11 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [nameQuery, setNameQuery] = useState<string>("");
+
+  // Prefetch states to ensure client-side search covers all items
+  const [isPrefetching, setIsPrefetching] = useState(false);
+  const [prefetchDone, setPrefetchDone] = useState(false);
+  const prefetchAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const key = `p${currentPage}-l${limit}`;
@@ -124,6 +135,31 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
     return () => controller.abort();
   }, [products, currentPage, limit, token, pages, dispatch]);
 
+  // fetch categories for dropdown
+  useEffect(() => {
+    const fetchCategories = async () => {
+      setIsCategoriesLoading(true);
+      try {
+        const res = await fetch("https://api.bitechx.com/categories", {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          cache: "no-store",
+        });
+        if (!res.ok)
+          throw new Error(`Failed to fetch categories: ${res.status}`);
+        const data = await res.json();
+        const items: Category[] =
+          data?.categories ?? data?.items ?? (Array.isArray(data) ? data : []);
+        dispatch(setCategories(items));
+      } catch (err: any) {
+        console.error("Failed to fetch categories:", err);
+      } finally {
+        setIsCategoriesLoading(false);
+      }
+    };
+
+    fetchCategories();
+  }, [token]);
+
   const computedTotal = storedTotal ?? localTotal;
 
   const allCachedItems = useMemo(() => {
@@ -141,21 +177,120 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
     return Array.from(map.values());
   }, [pages, products]);
 
-  const filtersActive = Boolean(nameQuery.trim());
+  // include categoryFilter in filtersActive
+  const filtersActive = Boolean(nameQuery.trim() || categoryFilter);
 
   const filteredAll = useMemo(() => {
     const nq = nameQuery.trim().toLowerCase();
-    if (!nq) return allCachedItems;
-    return allCachedItems.filter((p) =>
-      String(p.name ?? "")
-        .toLowerCase()
-        .includes(nq)
-    );
-  }, [allCachedItems, nameQuery]);
+    const catId = categoryFilter;
+    return allCachedItems.filter((p) => {
+      const nameMatch =
+        !nq ||
+        String(p.name ?? "")
+          .toLowerCase()
+          .includes(nq);
+
+      // category can be nested object or categoryId field
+      let categoryMatch = true;
+      if (catId) {
+        const catObj = (p.category as any) || {};
+        categoryMatch =
+          String(catObj?.id ?? "").toLowerCase() ===
+            String(catId).toLowerCase() ||
+          String((p as any).categoryId ?? "").toLowerCase() ===
+            String(catId).toLowerCase();
+      }
+
+      return nameMatch && categoryMatch;
+    });
+  }, [allCachedItems, nameQuery, categoryFilter]);
 
   useEffect(() => {
     dispatch(setCurrentPage(1));
-  }, [nameQuery]);
+  }, [nameQuery, categoryFilter, dispatch]);
+
+  // Prefetch missing pages into local cache when user starts filtering
+  useEffect(() => {
+    if (!filtersActive) return;
+    if (prefetchDone) return;
+    const total = typeof computedTotal === "number" ? computedTotal : undefined;
+    if (typeof total === "number") {
+      const cachedCount = allCachedItems.length;
+      if (cachedCount >= total) {
+        setPrefetchDone(true);
+        return;
+      }
+    }
+
+    let aborted = false;
+    const controller = new AbortController();
+    prefetchAbortRef.current = controller;
+
+    const doPrefetch = async () => {
+      setIsPrefetching(true);
+      try {
+        const totalItems =
+          typeof computedTotal === "number" ? computedTotal : undefined;
+        const pagesCount = totalItems ? Math.ceil(totalItems / limit) : 10;
+        for (let page = 1; page <= pagesCount; page++) {
+          if (aborted) break;
+          const key = `p${page}-l${limit}`;
+          if (pages && pages[key]) continue;
+          const offset = (page - 1) * limit;
+          const url = `https://api.bitechx.com/products?offset=${offset}&limit=${limit}`;
+          try {
+            const res = await fetch(url, {
+              headers: { Authorization: token ? `Bearer ${token}` : "" },
+              cache: "no-store",
+              signal: controller.signal,
+            });
+            if (!res.ok) {
+              console.warn("prefetch page failed", page, res.status);
+              break;
+            }
+            const data = await res.json();
+            const items: Product[] =
+              data?.products ??
+              data?.items ??
+              (Array.isArray(data) ? data : []);
+            const sanitizedItems = sanitizeProductsImages(items);
+            dispatch(setPage({ key, items: sanitizedItems }));
+            dispatch(
+              setProducts([...((products as Product[]) || []), ...items])
+            );
+            const serverTotal =
+              data?.totalCount ??
+              data?.meta?.totalCount ??
+              data?.count ??
+              undefined;
+            if (typeof serverTotal === "number") {
+              dispatch(setTotalCount(serverTotal));
+              setLocalTotal(serverTotal);
+            }
+          } catch (e: any) {
+            if (e.name === "AbortError") {
+              aborted = true;
+              break;
+            }
+            console.warn("prefetch error", e);
+            break;
+          }
+        }
+        setPrefetchDone(true);
+      } finally {
+        setIsPrefetching(false);
+      }
+    };
+
+    doPrefetch();
+
+    return () => {
+      aborted = true;
+      controller.abort();
+      prefetchAbortRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtersActive]);
 
   const [isMobile, setIsMobile] = useState(false);
 
@@ -172,7 +307,7 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
 
   const sourceList = filtersActive ? filteredAll : currentProducts;
   const displayTotal = filtersActive ? filteredAll.length : computedTotal;
-  const totalPages = Math.max(1, Math.ceil(displayTotal / limit));
+  const totalPages = Math.max(1, Math.ceil((displayTotal ?? 0) / limit));
 
   const displayedProducts = useMemo(() => {
     if (!filtersActive) return sourceList;
@@ -189,6 +324,7 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
   const handleLimitChange = (newLimit: number) => {
     dispatch(setLimit(newLimit));
     dispatch(setCurrentPage(1));
+    setPrefetchDone(false);
   };
 
   // Delete functionality handlers
@@ -263,12 +399,6 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
           prev.filter((p) => String(p.id ?? p.slug) !== removeKey)
         );
 
-        // Update filtered list if filters are active
-        if (filtersActive) {
-          // This will be handled by the useMemo dependencies
-          // We're updating the underlying data so the filter will rerun
-        }
-
         // Decrement total count
         if (typeof computedTotal === "number") {
           const newTotal = Math.max(0, computedTotal - 1);
@@ -303,14 +433,37 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
           <h2 className="text-4xl">Products</h2>
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 mt-3 sm:mt-0 w-full sm:justify-end">
-          <input
-            type="text"
-            className="order-last sm:order-first px-3 py-2 rounded-lg bg-foreground/15 outline-0 focus:ring-2 focus:ring-foreground transition"
-            placeholder="Search by name..."
-            value={nameQuery}
-            onChange={(e) => setNameQuery(e.target.value)}
-          />
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 mt-3 sm:mt-0 sm:justify-end">
+          <div className="order-last sm:order-first flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
+            <input
+              type="text"
+              className="px-3 py-2 rounded-lg bg-foreground/15 outline-0 focus:ring-2 focus:ring-foreground transition w-full sm:max-w-xs"
+              placeholder="Search by name..."
+              value={nameQuery}
+              onChange={(e) => {
+                setNameQuery(e.target.value);
+                setPrefetchDone(false);
+              }}
+            />
+
+            <select
+              value={categoryFilter}
+              onChange={(e) => {
+                setCategoryFilter(e.target.value);
+                setPrefetchDone(false);
+              }}
+              className="w-full sm:w-48 px-3 py-2 rounded-lg bg-foreground/15 outline-0 focus:ring-2 focus:ring-foreground transition"
+              disabled={isCategoriesLoading}
+            >
+              <option value="">All Categories</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div>
             <button
               type="button"
@@ -322,6 +475,10 @@ const Products: FC<ProductsProps> = ({ products: p }) => {
           </div>
         </div>
       </div>
+
+      {isPrefetching && (
+        <div className="px-4 text-sm text-gray-500">Preparing results...</div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4">
         {isLoading && !filtersActive ? (
